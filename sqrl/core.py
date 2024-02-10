@@ -119,14 +119,14 @@ class SQL:
             col_list = "*"
 
         # build select statement
-        stmt = (
-            f"SELECT {'DISTINCT' if distinct else ''}{col_list} FROM {table_name}"
-            f"{'' if not where else f" WHERE {where}"}"
-            f"{'' if not order_by else f" ORDER BY {order_by} {'ASC' if asc else 'DESC'}"}"
-            f" LIMIT {limit} OFFSET {offset}"
-            f"{'' if not group_by else f" GROUP BY {group_by}"}"
-            f"{'' if not having else f" HAVING {having}"};"
-        )
+        core = f"SELECT {'DISTINCT ' if distinct else ''}{col_list} FROM {table_name}"
+        where_chunk = '' if not where else f' WHERE {where}'
+        group_by_chunk = '' if not group_by else f' GROUP BY {group_by}'
+        having_chunk = '' if not having else f' HAVING {having}'
+        order_by_chunk = '' if not order_by else f" ORDER BY {order_by} {'ASC' if asc else 'DESC'}"
+        limit_offset_chunk = f" LIMIT {limit} OFFSET {offset};"
+
+        stmt = ''.join([core, where_chunk, group_by_chunk, having_chunk, order_by_chunk, limit_offset_chunk])
         result = self.fetch(stmt, n=fetch, row_factory=row_factory)
         return result
 
