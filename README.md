@@ -1,0 +1,5 @@
+# SQRL 🐿️
+
+```
+pip install sqrl
+```
