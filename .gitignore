@@ -1,6 +1,7 @@
 .idea/*
 .idea
 *.db
+*.toml
 .pypirc
 ./setup.py
 # Byte-compiled / optimized / DLL files
