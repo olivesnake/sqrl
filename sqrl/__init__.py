@@ -71,7 +71,7 @@ class SQL:
         self.schema.clear()
 
         for table in self.get_table_names():
-            table_name = table[0]
+            table_name = table
             # get all of the current tables columns
             self.schema[table_name] = self.get_column_names(table_name)
 
@@ -142,13 +142,15 @@ class SQL:
         :return: boolean whether execution was successful
         """
         if not self.table_exists(table_name):
+            print('%s not found' % table_name)
             return False
         columns, values = process_dict(data)
         core = "INSERT INTO" if not replace else "INSERT OR REPLACE INTO"
         col_list = ','.join(columns)
         val_list = ','.join(map(lambda _: '?', values))
         stmt = f"{core} {table_name} ({col_list}) VALUES ({val_list});"
-
+        if self.debug:
+            print(stmt)
         success = self.execute(stmt, *values, as_transaction=True)
         self.__vacuum()
         return success
@@ -205,7 +207,8 @@ class SQL:
         """
         if not self.table_exists(table_name):
             return False
-        return column in self.schema[table_name]
+        column_found: bool = column in self.schema[table_name]
+        return column_found
 
     def fetch_first_value(self, __sql: str, *__params) -> Any:
         """
@@ -228,6 +231,8 @@ class SQL:
         :return: result of aggregate
         """
         stmt = f"SELECT {agg}({column}) FROM {table_name};"
+        if self.debug:
+            print(stmt)
         a = self.fetch_first_value(stmt)
         return a
 
@@ -288,6 +293,7 @@ class SQL:
         """
         if not self.column_exists_in_table(table_name, column):
             return None
+
         agg = self.aggregate(table_name, column, "MAX")
         return agg
 
