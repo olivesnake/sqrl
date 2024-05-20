@@ -1,11 +1,11 @@
+"""
+Oliver 2024
+"""
+
 from . import utils
 
 __all__ = ["SQL"]
 __version__ = "0.1.5"
-
-"""
-Oliver 2024
-"""
 
 import csv as _csv
 import os.path as _op
@@ -13,12 +13,14 @@ import sqlite3 as _sql
 from typing import Dict, List, Any, Tuple
 
 
-def process_dict(d: Dict[Any, Any]) -> Tuple[List[Any], List[Any]]:
+def process_dict(d: Dict[Any, Any] | None) -> Tuple[List[Any], List[Any]]:
     """
     dictionary helper that splits the key and values into lists
     :param d: a dictionary
     :return: tuple of key list and values list
     """
+    if not d:
+        return [], []
     keys = list(d.keys())
     vals = list(d.values())
     return keys, vals
@@ -94,8 +96,10 @@ class SQL:
                limit: int = -1,
                offset: int = 0,
                fetch: None | int = None,
-               row_factory: _sql.Row | None = _sql.Row
-               ) -> List[Tuple[Any]] | List[_sql.Row]:
+               row_factory: _sql.Row | None = _sql.Row,
+               return_as_dict: bool = False,
+               ) -> List[Dict[str, Any]] | Dict[str, Any] | List[Tuple[Any]] | List[_sql.Row] | _sql.Row | Tuple[
+        Any]:
         """
         buildabe select statement shortcut,
         returns a given number of rows that matched the
@@ -113,6 +117,7 @@ class SQL:
         :param offset: offset from where to start rows that are returned (default: 0)
         :param fetch: number of items to fetch from return (default: None/all)
         :param row_factory: return a dict converitable rows or set to None to return tuples
+        :param return_as_dict: returns already converted to dictionayr object
         :return: list of items from select
         """
         # format columns
@@ -130,7 +135,7 @@ class SQL:
         limit_offset_chunk = f" LIMIT {limit} OFFSET {offset};"
 
         stmt = ''.join([core, where_chunk, group_by_chunk, having_chunk, order_by_chunk, limit_offset_chunk])
-        result = self.fetch(stmt, n=fetch, row_factory=row_factory)
+        result = self.fetch(stmt, n=fetch, row_factory=row_factory, return_as_dict=return_as_dict)
         return result
 
     def insert(self, table_name: str, data: Dict[str, Any], replace: bool = False) -> bool:
@@ -301,8 +306,9 @@ class SQL:
               __sql: str,
               *__params,
               n: int | None = None,
-              row_factory: _sql.Row | None = _sql.Row
-              ) -> None | List[_sql.Row] | List[Tuple]:
+              row_factory: _sql.Row | None = _sql.Row,
+              return_as_dict: bool = False
+              ) -> None | List[Dict[str, Any]] | Dict[str, Any] | List[_sql.Row] | List[Tuple] | _sql.Row | Tuple:
         """
         fetch statement execution with specificed number of
         rows to fetch
@@ -310,6 +316,7 @@ class SQL:
         :param __params: (optional) parameter values
         :param n: number of rows to fetch (default: None = all)
         :param row_factory: set to None to return tuples, otherwise will
+        :param return_as_dict: return already casted to a dictionary object
         return dict convertible Row objects
         :return: result of fetch
         """
@@ -319,11 +326,20 @@ class SQL:
             try:
                 cur.execute(__sql, list(__params))
                 if n is None:
-                    return cur.fetchall()
+                    res = cur.fetchall()
+                    if res and return_as_dict:
+                        return [dict(x) for x in res]
+                    return res
                 elif n == 1:
-                    return cur.fetchone()
+                    res = cur.fetchone()
+                    if res and return_as_dict:
+                        return dict(res)
+                    return res
                 else:
-                    return cur.fetchmany(n)
+                    res = cur.fetchmany(n)
+                    if res and return_as_dict:
+                        return [dict(x) for x in res]
+                    return res
             except _sql.Error:
                 return None
 
