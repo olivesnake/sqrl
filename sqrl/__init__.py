@@ -27,7 +27,7 @@ def process_dict(d: Dict[Any, Any] | None) -> Tuple[List[Any], List[Any]]:
 
 
 class SQL:
-    def __init__(self, filename: str, debug: bool = False):
+    def __init__(self, filename: str, debug: bool = False, check_same_thread: bool = True):
         """
         :param filename: path to database file
         :param debug: flag of whether to print errors to console
@@ -35,6 +35,7 @@ class SQL:
         self.file: str = filename
         if not _op.exists(self.file):
             raise FileNotFoundError
+        self.con: _sql.Connection = _sql.connect(filename, check_same_thread=check_same_thread, cached_statements=True)
         self.debug: bool = debug
         self.schema: Dict[str, List[str]] = {}
         self.build_schema()
@@ -48,7 +49,7 @@ class SQL:
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;",
             row_factory=None
         )
-        return [t[0] for t in tables]
+        return tables
 
     def get_column_names(self, table_name: str) -> List[str]:
         """
@@ -76,14 +77,6 @@ class SQL:
             table_name = table
             # get all of the current tables columns
             self.schema[table_name] = self.get_column_names(table_name)
-
-    def get_con(self) -> _sql.Connection:
-        """
-        returns sqlite connection object for
-        the database
-        :return: sqlite3 connection
-        """
-        return _sql.connect(self.file)
 
     def select(self, table_name: str,
                columns: List[str] | None = None,
@@ -135,6 +128,7 @@ class SQL:
         limit_offset_chunk = f" LIMIT {limit} OFFSET {offset};"
 
         stmt = ''.join([core, where_chunk, group_by_chunk, having_chunk, order_by_chunk, limit_offset_chunk])
+
         result = self.fetch(stmt, n=fetch, row_factory=row_factory, return_as_dict=return_as_dict)
         return result
 
@@ -152,7 +146,7 @@ class SQL:
         columns, values = process_dict(data)
         core = "INSERT INTO" if not replace else "INSERT OR REPLACE INTO"
         col_list = ','.join(columns)
-        val_list = ','.join(map(lambda _: '?', values))
+        val_list = ','.join(['?' for _ in values])
         stmt = f"{core} {table_name} ({col_list}) VALUES ({val_list});"
         if self.debug:
             print(stmt)
@@ -172,7 +166,7 @@ class SQL:
             return False
         columns, values = process_dict(data)
 
-        params = ', '.join(map(lambda c: f"{c} = ?", columns))
+        params = ', '.join([f"{c} = ?" for c in columns])
         stmt = f"UPDATE {table_name} SET {params} WHERE {where};"
 
         success = self.execute(stmt, *values, as_transaction=True)
@@ -238,7 +232,7 @@ class SQL:
         stmt = f"SELECT {agg}({column}) FROM {table_name};"
         if self.debug:
             print(stmt)
-        a = self.fetch_first_value(stmt)
+        a = self.fetch(stmt, n=1, row_factory=None)
         return a
 
     def count(self, table_name: str, column: str | None = None) -> int:
@@ -298,7 +292,6 @@ class SQL:
         """
         if not self.column_exists_in_table(table_name, column):
             return None
-
         agg = self.aggregate(table_name, column, "MAX")
         return agg
 
@@ -320,28 +313,40 @@ class SQL:
         return dict convertible Row objects
         :return: result of fetch
         """
-        with self.get_con() as con:
-            con.row_factory = row_factory
-            cur = con.cursor()
-            try:
-                cur.execute(__sql, list(__params))
-                if n is None:
-                    res = cur.fetchall()
-                    if res and return_as_dict:
-                        return [dict(x) for x in res]
+        # with self.get_con() as con:
+        self.con.row_factory = row_factory
+        cur = self.con.cursor()
+        try:
+            cur.execute(__sql, list(__params))
+            if n is None:
+                res = cur.fetchall()
+                if not res:
+                    return []
+                if return_as_dict:
+                    return [dict(x) for x in res]
+                if row_factory is None and len(res[0]) == 1:
+                    return [x[0] for x in res]
+                return res
+            elif n == 1:
+                res = cur.fetchone()
+                if not res:
                     return res
-                elif n == 1:
-                    res = cur.fetchone()
-                    if res and return_as_dict:
-                        return dict(res)
-                    return res
-                else:
-                    res = cur.fetchmany(n)
-                    if res and return_as_dict:
-                        return [dict(x) for x in res]
-                    return res
-            except _sql.Error:
-                return None
+                if return_as_dict:
+                    return dict(res)
+                if row_factory is None and len(res) == 1:
+                    return res[0]
+                return res
+            else:
+                res = cur.fetchmany(n)
+                if not res:
+                    return []
+                if return_as_dict:
+                    return [dict(x) for x in res]
+                if row_factory is None and len(res[0]) == 1:
+                    return [x[0] for x in res]
+                return res
+        except _sql.Error:
+            return None
 
     def execute(self, statement: str, *params, as_transaction: bool = False) -> bool:
         """
@@ -352,16 +357,18 @@ class SQL:
         the execution as a transaction
         :return: boolean whether execution was successful
         """
-        with self.get_con() as con:
-            cur = con.cursor()
-            try:
-                if as_transaction:
-                    cur.execute("BEGIN TRANSACTION;")
-                cur.execute(statement, list(params))
-                con.commit()
-            except _sql.Error:
-                con.rollback()
-                return False
+        # with self.get_con() as con:
+        cur = self.con.cursor()
+        try:
+            if as_transaction:
+                cur.execute("BEGIN TRANSACTION;")
+            cur.execute(statement, list(params))
+            self.con.commit()
+        except _sql.Error as e:
+            if self.debug:
+                print(e)
+            self.con.rollback()
+            return False
         return True
 
     def executescript(self, __sql: str) -> bool:
@@ -370,16 +377,16 @@ class SQL:
         :param __sql: sql script
         :return: boolean whether the execution was successful
         """
-        with self.get_con() as con:
-            cur = con.cursor()
-            try:
-                cur.executescript(__sql)
-                con.commit()
-            except _sql.Error as e:
-                if self.debug:
-                    print(e)
-                con.rollback()
-                return False
+        # with self.get_con() as con:
+        cur = self.con.cursor()
+        try:
+            cur.executescript(__sql)
+            self.con.commit()
+        except _sql.Error as e:
+            if self.debug:
+                print(e)
+            self.con.rollback()
+            return False
         return True
 
     def executemany(self, __sql: str, __seq_of_params) -> bool:
@@ -390,16 +397,17 @@ class SQL:
         :param __seq_of_params: sequence of data
         :return: boolean whether execution was successful
         """
-        with self.get_con() as con:
-            cur = con.cursor()
-            try:
-                cur.executemany(__sql, __seq_of_params)
-                con.commit()
-            except _sql.Error as e:
-                if self.debug:
-                    print(e)
-                con.rollback()
-                return False
+        # with self.get_con() as con:
+        cur = self.con.cursor()
+        cur.execute("BEGIN TRANSACTION;")
+        try:
+            cur.executemany(__sql, __seq_of_params)
+            self.con.commit()
+        except _sql.Error as e:
+            if self.debug:
+                print(e)
+            self.con.rollback()
+            return False
         return True
 
     def __vacuum(self):
@@ -422,9 +430,9 @@ class SQL:
         if not out_file:
             out_file = "%s.sql" % self.__get_database_name()
         dst = open(out_file, 'w', encoding="utf-16")
-        with self.get_con() as con:
-            lines = '\n'.join(con.iterdump())
-            dst.writelines(lines)
+        # with self.get_con() as con:
+        lines = '\n'.join(self.con.iterdump())
+        dst.writelines(lines)
         dst.close()
 
     def export_to_csv(self) -> None:
