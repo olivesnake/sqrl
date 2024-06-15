@@ -7,7 +7,7 @@ from sqrl import SQL # database API
 db = SQL("sample.db")
 ```
 
-```
+```python
 # still write raw sql using fetch
 db.fetch("SELECT title, duration, artist_id FROM tracks ORDER BY track_number;")
 
