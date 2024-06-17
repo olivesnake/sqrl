@@ -313,7 +313,6 @@ class SQL:
         return dict convertible Row objects
         :return: result of fetch
         """
-        # with self.get_con() as con:
         self.con.row_factory = row_factory
         cur = self.con.cursor()
         try:
@@ -357,7 +356,6 @@ class SQL:
         the execution as a transaction
         :return: boolean whether execution was successful
         """
-        # with self.get_con() as con:
         cur = self.con.cursor()
         try:
             if as_transaction:
@@ -377,7 +375,6 @@ class SQL:
         :param __sql: sql script
         :return: boolean whether the execution was successful
         """
-        # with self.get_con() as con:
         cur = self.con.cursor()
         try:
             cur.executescript(__sql)
@@ -397,7 +394,6 @@ class SQL:
         :param __seq_of_params: sequence of data
         :return: boolean whether execution was successful
         """
-        # with self.get_con() as con:
         cur = self.con.cursor()
         cur.execute("BEGIN TRANSACTION;")
         try:
@@ -430,19 +426,18 @@ class SQL:
         if not out_file:
             out_file = "%s.sql" % self.__get_database_name()
         dst = open(out_file, 'w', encoding="utf-16")
-        # with self.get_con() as con:
         lines = '\n'.join(self.con.iterdump())
         dst.writelines(lines)
         dst.close()
 
-    def export_to_csv(self) -> None:
+    def export_to_csv(self, delimeter: str = ',') -> None:
         """
         exports every table in the database
         to seperate csvs
         :return: None
         """
         for table in self.get_table_names():
-            self.export_table_to_csv(table)
+            self.export_table_to_csv(table_name=table, delimeter=delimeter)
 
     def export_table_to_csv(self, table_name: str, delimeter: str = ',') -> None:
         """
@@ -454,7 +449,7 @@ class SQL:
         if not self.table_exists(table_name):
             return
         outfile = f"./{self.__get_database_name()}-{table_name}.csv"
-        rows = list(map(dict, self.select(table_name)))
+        rows = [dict(tab) for tab in self.select(table_name)]
         if not len(rows):
             return
         headers = list(rows[0].keys())  # extract column header line
