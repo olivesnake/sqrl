@@ -27,7 +27,7 @@ def process_dict(d: Dict[Any, Any] | None) -> Tuple[List[Any], List[Any]]:
 
 
 class SQL:
-    def __init__(self, filename: str, debug: bool = False, check_same_thread: bool = True):
+    def __init__(self, filename: str, debug: bool = False, check_same_thread: bool = True, optimize: bool = False):
         """
         :param filename: path to database file
         :param debug: flag of whether to print errors to console
@@ -36,6 +36,12 @@ class SQL:
         if not _op.exists(self.file):
             raise FileNotFoundError
         self.con: _sql.Connection = _sql.connect(filename, check_same_thread=check_same_thread, cached_statements=True)
+        if optimize:
+            self.executescript("""
+               pragma journal_mode = WAL; -- write to sequential write-ahead log, and sync later
+               pragma synchronous = normal;
+               pragma journal_size_limit = 6144000;
+               """)
         self.debug: bool = debug
         self.schema: Dict[str, List[str]] = {}
         self.build_schema()
@@ -151,7 +157,6 @@ class SQL:
         if self.debug:
             print(stmt)
         success = self.execute(stmt, *values, as_transaction=True)
-        self.__vacuum()
         return success
 
     def update(self, table_name: str, data: Dict[str, Any], where: str = "1 = 1") -> bool:
@@ -170,10 +175,9 @@ class SQL:
         stmt = f"UPDATE {table_name} SET {params} WHERE {where};"
 
         success = self.execute(stmt, *values, as_transaction=True)
-        self.__vacuum()
         return success
 
-    def delete(self, table_name: str, where: str) -> bool:
+    def delete(self, table_name: str, where: str, vacuum: bool = False) -> bool:
         """
         delete from a table based on a given conditional
         :param table_name: name of table in database
@@ -186,7 +190,8 @@ class SQL:
         stmt = f"DELETE FROM {table_name} WHERE {where};"
 
         success = self.execute(stmt, as_transaction=True)
-        self.__vacuum()
+        if vacuum:
+            self.vacuum()
         return success
 
     def table_exists(self, name: str) -> bool:
@@ -406,7 +411,7 @@ class SQL:
             return False
         return True
 
-    def __vacuum(self):
+    def vacuum(self):
         """utility for vacuuming database"""
         self.execute("VACUUM;")
 
