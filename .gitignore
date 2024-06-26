@@ -9,6 +9,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+main.py
+*.db*
+
 # C extensions
 *.so
 

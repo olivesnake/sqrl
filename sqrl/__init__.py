@@ -138,59 +138,68 @@ class SQL:
         result = self.fetch(stmt, n=fetch, row_factory=row_factory, return_as_dict=return_as_dict)
         return result
 
-    def insert(self, table_name: str, data: Dict[str, Any], replace: bool = False) -> bool:
+    def insert(self,
+               table_name: str,
+               data: Dict[str, Any],
+               replace: bool = False,
+               returning: str | None = None) -> bool | List[Tuple[Any]]:
         """
         insert (or replace) new data into a table
         :param table_name: name of table in database
         :param data: a dictionary of column names and the values
         :param replace: flag of whether make it an OR REPLACE statement
+        :param returning: optional string input for a returning clause after insertion
         :return: boolean whether execution was successful
         """
-        if not self.table_exists(table_name):
-            print('%s not found' % table_name)
-            return False
         columns, values = process_dict(data)
         core = "INSERT INTO" if not replace else "INSERT OR REPLACE INTO"
         col_list = ','.join(columns)
         val_list = ','.join(['?' for _ in values])
-        stmt = f"{core} {table_name} ({col_list}) VALUES ({val_list});"
+        stmt = f"{core} {table_name} ({col_list}) VALUES ({val_list}){' RETURNING %s' % returning if returning else ''};"
         if self.debug:
             print(stmt)
-        success = self.execute(stmt, *values, as_transaction=True)
-        return success
+        res = self.execute(stmt, *values, as_transaction=True, has_return=returning is not None)
+        return res
 
-    def update(self, table_name: str, data: Dict[str, Any], where: str = "1 = 1") -> bool:
+    def update(self,
+               table_name: str,
+               data: Dict[str, Any],
+               where: str = "1 = 1",
+               returning: str | None = None) -> bool | List[Tuple[Any]]:
         """
         update data within a given table
         :param table_name: table name to update in
         :param data: dictionary of column names and new values
         :param where: conditional clause for updating (default: 1 = 1 / update everything)
+        :param returning: optional string input for a returning clause after update
         :return: boolean whether execution was successful
         """
-        if not self.table_exists(table_name):
-            return False
         columns, values = process_dict(data)
 
         params = ', '.join([f"{c} = ?" for c in columns])
-        stmt = f"UPDATE {table_name} SET {params} WHERE {where};"
+        stmt = f"UPDATE {table_name} SET {params} WHERE {where}{' RETURNING %s' % returning if returning else ''};"
 
-        success = self.execute(stmt, *values, as_transaction=True)
-        return success
+        res = self.execute(stmt, *values, as_transaction=True, has_return=returning is not None)
+        return res
 
-    def delete(self, table_name: str, where: str, vacuum: bool = False) -> bool:
+    def delete(self,
+               table_name: str,
+               where: str,
+               returning: str | None = None,
+               vacuum: bool = False) -> bool | List[Tuple[Any]]:
         """
         delete from a table based on a given conditional
         :param table_name: name of table in database
         :param where: conditional for which item to delete from table
+        :param returning: optional string input for a returning clause after update
+        :param vacuum: flag to specify whether to vacuum db after this delete operation
         :return: boolean of whether execution was successful
         """
-        if not self.table_exists(table_name):
-            return False
 
-        stmt = f"DELETE FROM {table_name} WHERE {where};"
+        stmt = f"DELETE FROM {table_name} WHERE {where}{' RETURNING %s' % returning if returning else ''};"
 
-        success = self.execute(stmt, as_transaction=True)
-        if vacuum:
+        success = self.execute(stmt, as_transaction=True, has_return=returning is not None)
+        if vacuum and success:
             self.vacuum()
         return success
 
@@ -209,7 +218,8 @@ class SQL:
         :param column: column name
         :return: True if column is in table else False
         """
-        if not self.table_exists(table_name):
+        table_cols = self.schema.get(table_name, None)
+        if table_cols is None:
             return False
         column_found: bool = column in self.schema[table_name]
         return column_found
@@ -240,7 +250,7 @@ class SQL:
         a = self.fetch(stmt, n=1, row_factory=None)
         return a
 
-    def count(self, table_name: str, column: str | None = None) -> int:
+    def count(self, table_name: str, column: str | None = None) -> int | None:
         """
         returns the number of rows in a table
         :param table_name: name of table
@@ -251,19 +261,17 @@ class SQL:
         count = self.aggregate(table_name, "*" if not column else column, "COUNT")
         return count
 
-    def sum(self, table_name: str, column: str) -> float:
+    def sum(self, table_name: str, column: str) -> float | None:
         """
         perform sum aggregate on given column in table
         :param table_name: name of table
         :param column: column name
         :return: sum of values in the column
         """
-        if not self.column_exists_in_table(table_name, column):
-            return -1
         agg = self.aggregate(table_name, column, "SUM")
         return agg
 
-    def avg(self, table_name: str, column: str, precision=2) -> float:
+    def avg(self, table_name: str, column: str, precision=2) -> float | None:
         """
         preform average aggregate on a given column in table
         :param table_name: name of table
@@ -271,10 +279,8 @@ class SQL:
         :param precision: decimal places in rounding (default: 2)
         :return: average value of values in the column
         """
-        if not self.column_exists_in_table(table_name, column):
-            return -1
         agg = self.aggregate(table_name, column, "AVG")
-        return agg if not agg else round(agg, precision)
+        return agg if agg is None else round(agg, precision)
 
     def min(self, table_name: str, column: str) -> Any:
         """
@@ -283,8 +289,6 @@ class SQL:
         :param column: column name
         :return: minimum value in column
         """
-        if not self.column_exists_in_table(table_name, column):
-            return None
         agg = self.aggregate(table_name, column, "MIN")
         return agg
 
@@ -295,8 +299,6 @@ class SQL:
         :param column: column name
         :return: maximum value in column
         """
-        if not self.column_exists_in_table(table_name, column):
-            return None
         agg = self.aggregate(table_name, column, "MAX")
         return agg
 
@@ -352,13 +354,19 @@ class SQL:
         except _sql.Error:
             return None
 
-    def execute(self, statement: str, *params, as_transaction: bool = False) -> bool:
+    def execute(self,
+                statement: str,
+                *params,
+                as_transaction: bool = False,
+                has_return: bool = False) -> bool | List[Tuple[Any]]:
         """
         execute an sql statement
         :param statement: sql statement
         :param params: (optional) parameter values
         :param as_transaction: flag of whether to run
         the execution as a transaction
+        :param has_return: flag of whether statement returns data
+        (e.g. UPDATE BOOKS SET isbn = '1234' WHERE id = 1 RETURNING *;
         :return: boolean whether execution was successful
         """
         cur = self.con.cursor()
@@ -366,13 +374,14 @@ class SQL:
             if as_transaction:
                 cur.execute("BEGIN TRANSACTION;")
             cur.execute(statement, list(params))
+            out = cur.fetchall() if has_return else True
             self.con.commit()
+            return out
         except _sql.Error as e:
             if self.debug:
                 print(e)
             self.con.rollback()
             return False
-        return True
 
     def executescript(self, __sql: str) -> bool:
         """
@@ -463,3 +472,6 @@ class SQL:
             writer = _csv.writer(csv_file, delimiter=delimeter)
             writer.writerow(headers)
             writer.writerows(csv_rows)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.con.close()
