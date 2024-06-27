@@ -11,7 +11,8 @@ __pycache__/
 
 main.py
 *.db*
-
+*.csv
+*.sql
 # C extensions
 *.so
 
