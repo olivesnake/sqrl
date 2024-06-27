@@ -32,8 +32,6 @@ class SQL:
         :param debug: flag of whether to print errors to console
         """
         self.file: str = filename
-        if self.file != IN_MEMORY and not _op.exists(self.file):
-            raise FileNotFoundError
         self.con: _sql.Connection = _sql.connect(filename, check_same_thread=check_same_thread, cached_statements=True)
         if optimize:
             self.executescript("""
