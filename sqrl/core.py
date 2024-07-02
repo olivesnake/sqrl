@@ -12,20 +12,37 @@ IN_MEMORY = ":memory:"
 
 
 class SQL:
-    def __init__(self, filename: str = IN_MEMORY, debug: bool = False, check_same_thread: bool = True,
-                 optimize: bool = True):
+    def __init__(
+            self,
+            filename: str = IN_MEMORY,
+            debug: bool = False,
+            check_same_thread: bool = True,
+            optimize: bool = True,
+            foreign_keys: bool = True
+    ):
         """
         :param filename: path to database file
-        :param debug: flag of whether to print errors to console
+        :param debug: flag of whether to echo statements and errors
+        :param check_same_thread: flag for the db connection to check if running on the same thread (on by default)
+        :param optimize: set journal mode to write ahead log and other optimizations (on by default)
+        :param foreign_keys: enables foreign key flag (on by default)
         """
         self.file: str = filename
         self.con: _sql.Connection = _sql.connect(filename, check_same_thread=check_same_thread, cached_statements=True)
-        if optimize:
-            self.executescript("""
-               pragma journal_mode = WAL; -- write to sequential write-ahead log, and sync later
-               pragma synchronous = normal;
-               pragma journal_size_limit = 6144000;
-               """)
+        if foreign_keys:
+            self.execute("pragma foreign_keys = on;")
+        if optimize and self.file != IN_MEMORY:
+            # check if WAL already enabled
+            with open(filename, "rb") as file:
+                file.seek(19)
+                write = file.read(1)
+                read = file.read(1)
+                if not (write == '\x02' and read == '\x02'):
+                    self.executescript("""
+                       pragma journal_mode = WAL; -- write to sequential write-ahead log, and sync later
+                       pragma synchronous = normal;
+                       pragma journal_size_limit = 6144000;
+                       """)
         self.debug: bool = debug
         self.schema: Dict[str, List[str]] = {}
 
