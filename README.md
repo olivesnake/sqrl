@@ -78,7 +78,7 @@ db.update(
 db.delete(
     table_name="album", where=f"id = {1}"
 )
-# paramterization not currently supported for the conditional, so you can use db.execute as well
+# although the param dictionary for update is parameterized, the where clause is not. so you can use db.execute
 # to execute full SQL statements i.e. db.execute("DELETE FROM album WHERE id = ?", 1)
 ```
 
