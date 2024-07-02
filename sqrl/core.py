@@ -16,6 +16,10 @@ def echo_callback(stmt):
     print("[statement]: {}".format(stmt))
 
 
+def progress_callback(status, remaining, total):
+    print("{}/{} pages copied..".format(total - remaining, total))
+
+
 class SQL:
     def __init__(
             self,
@@ -502,6 +506,21 @@ class SQL:
         self.con.create_function(
             name, narg, func, deterministic=deterministic
         )
+
+    def backup(self, filename: str, pages: int = -1, quiet: bool = True):
+        """
+        create backup of current sqlite database
+        :param filename: filename for sqlite database
+        :param pages:number of pages to copy at a time (default -1/all)
+        :param quiet: flag of whether to use copy progress callback
+        :return: None
+        """
+        with sqlite.connect(filename) as dst:
+            self.con.backup(
+                dst,
+                pages=pages,
+                progress=None if quiet else progress_callback
+            )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.con.close()
