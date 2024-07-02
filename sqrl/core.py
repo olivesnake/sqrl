@@ -7,6 +7,7 @@ import csv as _csv
 import os.path as _op
 import sqlite3 as _sql
 from typing import Dict, List, Any, Tuple
+import re
 
 IN_MEMORY = ":memory:"
 
@@ -52,8 +53,7 @@ class SQL:
         :return: list of strings of table names
         """
         tables = self.fetch(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;",
-            row_factory=None
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
         )
         return tables
 
@@ -63,10 +63,7 @@ class SQL:
         :param table_name: name of table in database
         :return: list of strings
         """
-        columns = self.fetch(
-            f"PRAGMA table_info({table_name});",
-            row_factory=None
-        )
+        columns = self.fetch("PRAGMA table_info({});".format(table_name))
         return [col[1] for col in columns]
 
     def build_schema(self) -> None:
@@ -95,7 +92,6 @@ class SQL:
                limit: int = -1,
                offset: int = 0,
                fetch: None | int = None,
-               row_factory: _sql.Row | None = _sql.Row,
                return_as_dict: bool = False,
                ) -> List[Dict[str, Any]] | Dict[str, Any] | List[Tuple[Any]] | List[_sql.Row] | _sql.Row | Tuple[
         Any]:
@@ -135,7 +131,7 @@ class SQL:
 
         stmt = ''.join([core, where_chunk, group_by_chunk, having_chunk, order_by_chunk, limit_offset_chunk])
 
-        result = self.fetch(stmt, n=fetch, row_factory=row_factory, return_as_dict=return_as_dict)
+        result = self.fetch(stmt, one=limit == 1, return_as_dict=return_as_dict)
         return result
 
     def insert(self,
@@ -234,7 +230,7 @@ class SQL:
         :param __params: (optional) parameter arguments
         :return: value of first column of rows
         """
-        out = self.fetch(__sql, *__params, n=1, row_factory=None)
+        out = self.fetch(__sql, *__params, one=True)
         return out if not out else out[0]
 
     def aggregate(self, table_name: str, column: str, agg: str) -> Any:
@@ -249,7 +245,7 @@ class SQL:
         stmt = f"SELECT {agg}({column}) FROM {table_name};"
         if self.debug:
             print(stmt)
-        a = self.fetch(stmt, n=1, row_factory=None)
+        a = self.fetch(stmt, one=True)
         return a
 
     def count(self, table_name: str, column: str | None = None) -> int | None:
@@ -305,55 +301,44 @@ class SQL:
         return agg
 
     def fetch(self,
-              __sql: str,
-              *__params,
-              n: int | None = None,
-              row_factory: _sql.Row | None = _sql.Row,
+              sql: str,
+              *params,
+              one: bool = False,
               return_as_dict: bool = False
-              ) -> None | List[Dict[str, Any]] | Dict[str, Any] | List[_sql.Row] | List[Tuple] | _sql.Row | Tuple:
+              ) -> None | List[Dict[str, Any]] | Dict[str, Any] | List[Tuple] | Tuple:
         """
         fetch statement execution with specificed number of
         rows to fetch
-        :param __sql: sql statement
-        :param __params: (optional) parameter values
-        :param n: number of rows to fetch (default: None = all)
-        :param row_factory: set to None to return tuples, otherwise will
+        :param sql: sql statement to be executed
+        :param params: (optional) parameter values as arguments to function
+        rather than in iterable
+        :param one: flag to specify if to fetch exactly one (return single object)
         :param return_as_dict: return already casted to a dictionary object
         return dict convertible Row objects
         :return: result of fetch
         """
-        self.con.row_factory = row_factory
-        cur = self.con.cursor()
         try:
-            cur.execute(__sql, list(__params))
-            if n is None:
-                res = cur.fetchall()
-                if not res:
-                    return []
-                if return_as_dict:
-                    return [dict(x) for x in res]
-                if row_factory is None and len(res[0]) == 1:
-                    return [x[0] for x in res]
-                return res
-            elif n == 1:
-                res = cur.fetchone()
-                if not res:
-                    return res
-                if return_as_dict:
-                    return dict(res)
-                if row_factory is None and len(res) == 1:
-                    return res[0]
-                return res
+            params = list(params)
+            self.con.row_factory = _sql.Row if return_as_dict else None
+            # select rows from database
+            rows = [
+                dict(row) if return_as_dict else row for row in self.con.execute(sql, params)
+            ]
+
+            if len(rows) == 0:
+                return None if one else []
+
+            if one or re.match(r".+ LIMIT 1( |;|\D).*", sql, flags=re.IGNORECASE):
+                row = rows[0]
+                if len(row) == 1 and not return_as_dict:
+                    return row[0]
+                return row
             else:
-                res = cur.fetchmany(n)
-                if not res:
-                    return []
-                if return_as_dict:
-                    return [dict(x) for x in res]
-                if row_factory is None and len(res[0]) == 1:
-                    return [x[0] for x in res]
-                return res
-        except _sql.Error:
+                if len(rows[0]) == 1 and not return_as_dict:
+                    return [row[0] for row in rows]
+                return rows
+
+        except _sql.Error as e:
             return None
 
     def execute(self,
