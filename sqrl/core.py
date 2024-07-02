@@ -5,46 +5,64 @@ Oliver 2024
 from . import utils
 import csv as _csv
 import os.path as _op
-import sqlite3 as _sql
-from typing import Dict, List, Any, Tuple
+import sqlite3 as sqlite
+from typing import Dict, List, Any, Tuple, Callable
 import re
 
 IN_MEMORY = ":memory:"
+
+
+def echo_callback(stmt):
+    print("[statement]: {}".format(stmt))
 
 
 class SQL:
     def __init__(
             self,
             filename: str = IN_MEMORY,
-            debug: bool = False,
+            echo: bool = False,
+            timeout: float = 5.0,
+            detect_types: int = 0,
+            isolation_level: str | None = None,
             check_same_thread: bool = True,
+            cached_statements: int = 128,
+            autocommit: bool = False,
             optimize: bool = True,
             foreign_keys: bool = True
     ):
         """
         :param filename: path to database file
-        :param debug: flag of whether to echo statements and errors
+        :param echo: flag of whether to echo statements and errors
+        :param timeout: How many seconds the connection should wait before raising an OperationalError when a table is locked
+        :param detect_types: control whether and how data types not natively supported by SQLite are looked up to be converted to Python types
+        :param isolation_level: control legacy transaction handling behaviour
         :param check_same_thread: flag for the db connection to check if running on the same thread (on by default)
+        :param cached_statements:he number of statements that sqlite3 should internally cache for this connection, to avoid parsing overhead. By default, 128 statements.
         :param optimize: set journal mode to write ahead log and other optimizations (on by default)
         :param foreign_keys: enables foreign key flag (on by default)
         """
         self.file: str = filename
-        self.con: _sql.Connection = _sql.connect(filename, check_same_thread=check_same_thread, cached_statements=True)
+        self.con: sqlite.Connection = sqlite.connect(
+            filename,
+            timeout=timeout,
+            detect_types=detect_types,
+            isolation_level=isolation_level,
+            check_same_thread=check_same_thread,
+            cached_statements=cached_statements,
+            autocommit=autocommit
+        )
+        if echo:
+            self.con.set_trace_callback(echo_callback)
         if foreign_keys:
             self.execute("pragma foreign_keys = on;")
         if optimize and self.file != IN_MEMORY:
-            # check if WAL already enabled
-            with open(filename, "rb") as file:
-                file.seek(19)
-                write = file.read(1)
-                read = file.read(1)
-                if not (write == '\x02' and read == '\x02'):
-                    self.executescript("""
-                       pragma journal_mode = WAL; -- write to sequential write-ahead log, and sync later
-                       pragma synchronous = normal;
-                       pragma journal_size_limit = 6144000;
-                       """)
-        self.debug: bool = debug
+            # enabled write ahead log journal mode if not already enabled
+            journal_mode = self.fetch("pragma journal_mode;", one=True)
+            if journal_mode != 'wal':
+                self.executescript(
+                    "pragma journal_mode = WAL; pragma synchronous = normal; pragma journal_size_limit = 6144000;"
+                )
+
         self.schema: Dict[str, List[str]] = {}
 
     def get_table_names(self) -> List[str]:
@@ -93,7 +111,7 @@ class SQL:
                offset: int = 0,
                fetch: None | int = None,
                return_as_dict: bool = False,
-               ) -> List[Dict[str, Any]] | Dict[str, Any] | List[Tuple[Any]] | List[_sql.Row] | _sql.Row | Tuple[
+               ) -> List[Dict[str, Any]] | Dict[str, Any] | List[Tuple[Any]] | List[sqlite.Row] | sqlite.Row | Tuple[
         Any]:
         """
         buildabe select statement shortcut,
@@ -152,8 +170,6 @@ class SQL:
         col_list = ','.join(columns)
         val_list = ','.join(['?' for _ in values])
         stmt = f"{core} {table_name} ({col_list}) VALUES ({val_list}){' RETURNING %s' % returning if returning else ''};"
-        if self.debug:
-            print(stmt)
         res = self.execute(stmt, *values, as_transaction=True, has_return=returning is not None)
         return res
 
@@ -243,8 +259,6 @@ class SQL:
         :return: result of aggregate
         """
         stmt = f"SELECT {agg}({column}) FROM {table_name};"
-        if self.debug:
-            print(stmt)
         a = self.fetch(stmt, one=True)
         return a
 
@@ -319,7 +333,7 @@ class SQL:
         """
         try:
             params = list(params)
-            self.con.row_factory = _sql.Row if return_as_dict else None
+            self.con.row_factory = sqlite.Row if return_as_dict else None
             # select rows from database
             rows = [
                 dict(row) if return_as_dict else row for row in self.con.execute(sql, params)
@@ -338,7 +352,7 @@ class SQL:
                     return [row[0] for row in rows]
                 return rows
 
-        except _sql.Error as e:
+        except sqlite.Error as e:
             return None
 
     def execute(self,
@@ -364,9 +378,7 @@ class SQL:
             out = cur.fetchall() if has_return else True
             self.con.commit()
             return out
-        except _sql.Error as e:
-            if self.debug:
-                print(e)
+        except sqlite.Error as e:
             self.con.rollback()
             return False
 
@@ -380,9 +392,7 @@ class SQL:
         try:
             cur.executescript(__sql)
             self.con.commit()
-        except _sql.Error as e:
-            if self.debug:
-                print(e)
+        except sqlite.Error as e:
             self.con.rollback()
             return False
         return True
@@ -396,13 +406,10 @@ class SQL:
         :return: boolean whether execution was successful
         """
         cur = self.con.cursor()
-        cur.execute("BEGIN TRANSACTION;")
         try:
             cur.executemany(__sql, __seq_of_params)
             self.con.commit()
-        except _sql.Error as e:
-            if self.debug:
-                print(e)
+        except sqlite.Error as e:
             self.con.rollback()
             return False
         return True
@@ -461,6 +468,27 @@ class SQL:
             writer = _csv.writer(csv_file, delimiter=delimeter)
             writer.writerow(headers)
             writer.writerows(csv_rows)
+
+    def register_adapter(self, type: object, adapter: Callable):
+        """
+        Register an adapter callable to adapt the Python type type into an SQLite type.
+        :param type: a custom or Python type
+        :param adapter: a callable
+        :return: None
+        """
+        sqlite.register_adapter(type, adapter)
+
+    def register_convert(self, typename: str, converter: Callable):
+        """
+        Register the converter callable to convert SQLite objects of
+        type typename into a Python object of a specific type.
+         The converter is invoked for all SQLite values of type typename;
+         it is passed a bytes object and should return an object of the desired Python type.
+        :param typename: string of the typename
+        :param converter: callabe for conversion
+        :return: None
+        """
+        sqlite.register_converter(typename, converter)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.con.close()
