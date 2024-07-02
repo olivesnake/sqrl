@@ -490,5 +490,18 @@ class SQL:
         """
         sqlite.register_converter(typename, converter)
 
+    def create_function(self, name: str, narg: int, func: Callable | None, *, deterministic: bool = False):
+        """
+        Create or remove a user-defined SQL function.
+        :param name: name of the function
+        :param narg:number of arguments function can accept, -1 for any amount
+        :param func: callabe function or None to remove an existing function
+        :param deterministic:
+        :return: None
+        """
+        self.con.create_function(
+            name, narg, func, deterministic=deterministic
+        )
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.con.close()
