@@ -11,22 +11,9 @@ from typing import Dict, List, Any, Tuple
 IN_MEMORY = ":memory:"
 
 
-def process_dict(d: Dict[Any, Any] | None) -> Tuple[List[Any], List[Any]]:
-    """
-    dictionary helper that splits the key and values into lists
-    :param d: a dictionary
-    :return: tuple of key list and values list
-    """
-    if not d:
-        return [], []
-    keys = list(d.keys())
-    vals = list(d.values())
-    return keys, vals
-
-
 class SQL:
     def __init__(self, filename: str = IN_MEMORY, debug: bool = False, check_same_thread: bool = True,
-                 optimize: bool = False):
+                 optimize: bool = True):
         """
         :param filename: path to database file
         :param debug: flag of whether to print errors to console
@@ -41,7 +28,6 @@ class SQL:
                """)
         self.debug: bool = debug
         self.schema: Dict[str, List[str]] = {}
-        self.build_schema()
 
     def get_table_names(self) -> List[str]:
         """
@@ -215,6 +201,8 @@ class SQL:
         :param column: column name
         :return: True if column is in table else False
         """
+        if len(self.schema) == 0:
+            self.build_schema()
         table_cols = self.schema.get(table_name, None)
         if table_cols is None:
             return False
