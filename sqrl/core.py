@@ -30,7 +30,6 @@ class SQL:
             isolation_level: str | None = None,
             check_same_thread: bool = True,
             cached_statements: int = 128,
-            autocommit: bool = False,
             optimize: bool = True,
             foreign_keys: bool = True
     ):
@@ -53,7 +52,6 @@ class SQL:
             isolation_level=isolation_level,
             check_same_thread=check_same_thread,
             cached_statements=cached_statements,
-            autocommit=autocommit
         )
         if echo:
             self.con.set_trace_callback(echo_callback)
@@ -337,6 +335,7 @@ class SQL:
         """
         try:
             params = list(params)
+            one = one or re.match(r"^.+ LIMIT 1($| |;|\D).*", sql, flags=re.IGNORECASE)
             self.con.row_factory = sqlite.Row if return_as_dict else None
             # select rows from database
             rows = [
@@ -346,7 +345,7 @@ class SQL:
             if len(rows) == 0:
                 return None if one else []
 
-            if one or re.match(r".+ LIMIT 1( |;|\D).*", sql, flags=re.IGNORECASE):
+            if one:
                 row = rows[0]
                 if len(row) == 1 and not return_as_dict:
                     return row[0]
