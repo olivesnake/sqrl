@@ -5,6 +5,7 @@ Oliver 2024
 from . import utils
 import csv as _csv
 import os.path as _op
+import json
 import sqlite3 as sqlite
 from typing import Dict, List, Any, Tuple, Callable
 import re
@@ -451,6 +452,25 @@ class SQL:
         """
         for table in self.get_table_names():
             self.export_table_to_csv(table_name=table, delimeter=delimeter)
+
+    def to_json(self, table_name: str, filename: str | None = None) -> bool:
+        """
+        converts a table in the database to a JSON file
+        :param table_name: name of table
+        :param filename: filename for output (if None then table_name.json)
+        :return: boolean whether export was successful
+        """
+        if not filename:
+            filename = './{}.json'.format(table_name)
+        result = self.select(table_name, return_as_dict=True)
+        if result is None:
+            return False
+        try:
+            with open(filename, 'w') as file:
+                json.dump(result, file)
+        except Exception as e:
+            return False
+        return True
 
     def export_table_to_csv(self, table_name: str, delimeter: str = ',') -> None:
         """

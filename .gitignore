@@ -14,6 +14,7 @@ main.py
 *.sqlite*
 *.csv
 *.sql
+*.json
 # C extensions
 *.so
 
