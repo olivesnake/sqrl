@@ -1,6 +1,11 @@
 # SQrL 🐿️
 a lightweight sqlite API for Python
 
+## installation
+```
+python -m pip install sqrl
+```
+
 ### Getting Started
 ```python
 from sqrl import SQL # database API
