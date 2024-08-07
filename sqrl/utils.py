@@ -4,6 +4,7 @@ Oliver 2024
 import os.path
 import re
 from typing import List, Dict, Any, Tuple
+import csv
 
 
 def AND(*params) -> str:
@@ -63,6 +64,23 @@ def detect_type_json(data) -> str:
     else:
         return "text"
 
+
 def extract_filename(fpath) -> str:
     return os.path.splitext(os.path.basename(fpath))[0]
 
+
+def read_csv(filepath: str) -> Tuple[List[str], List[str]]:
+    """
+
+    :param filepath:
+    :return:
+    """
+    with open(filepath, "r", encoding="utf-8", errors="replace") as csv_file:
+        reader = csv.reader(csv_file, delimiter=',')
+        headers = next(reader)
+        rows = [x for x in reader]
+        return headers, rows
+
+
+def safe_name(text: str) -> str:
+    return text.replace('-', '_').replace(' ', '_')

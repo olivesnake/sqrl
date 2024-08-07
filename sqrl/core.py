@@ -1,15 +1,15 @@
 """
 Oliver 2024
 """
-import os.path
 
-from . import utils
 import csv as _csv
-import os.path as _op
 import json
+import os.path as _op
+import re
 import sqlite3 as sqlite
 from typing import Dict, List, Any, Tuple, Callable
-import re
+
+from . import utils
 
 IN_MEMORY = ":memory:"
 
@@ -543,8 +543,31 @@ class SQL:
             )
 
     def create_table_from_csv(self, filename: str, name: str | None = None) -> bool:
+        """
+        create a new table in the current database from a csv file and inserts all data
+        assumes that json file is an array of objects with the same keys
+        :param filename: name of csv file
+        :param name: optional name of table
+        :return: boolean of if creation was successful
+        """
+        if name is None:
+            name = utils.extract_filename(filename).lower()
+        name = utils.safe_name(name)
+        headers, rows = utils.read_csv(filename)
+        if len(rows) == 0:
+            return False
+        columns = []
+        for i, v in enumerate(rows[0]):
+            col = "{} {}".format(headers[i].replace(' ', '_'), utils.detect_type_csv(v))
+            columns.append(col)
+        create_stmt = f"CREATE TABLE {name} ({','.join(columns)});"
+        print(create_stmt)
+        if not self.execute(create_stmt):
+            return False
 
-        return False
+        insert_stmt = f"INSERT INTO {name} ({','.join(headers)}) VALUES ({','.join('?' * len(columns))});"
+
+        return self.executemany(insert_stmt, rows)
 
     def create_table_from_json(self, filename: str, name: str | None = None) -> bool:
         """
@@ -562,7 +585,7 @@ class SQL:
                 return
             if not isinstance(data, list):
                 # TODO: implement handling for a single object?
-                raise TypeError
+                return False
 
             # assume all objects have the same key
             item = data[0]
@@ -577,8 +600,6 @@ class SQL:
             if not self.execute(statement):  # error in creation or table name exists
                 return False
 
-            # insert_stmt = f"-- INSERT INTO {name} ({','.join(keys)}) VALUES ({','.join('?' * len(keys))});"
-            # print(insert_stmt)
             success = True
             for x in data:
                 success = success and self.insert(name, x)

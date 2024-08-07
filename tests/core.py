@@ -1,0 +1,40 @@
+import unittest
+import sqrl.core as core
+
+
+class CreateTableFromJSON(unittest.TestCase):
+    def test_invalid_json_file(self):
+        db = core.SQL()
+        self.assertFalse(db.create_table_from_json("bad.json"))
+
+    def test_existing_table_name(self):
+        db = core.SQL()
+        self.assertTrue(db.execute("CREATE TABLE artists (foo integer, bar text)"))
+        self.assertFalse(db.create_table_from_json("artists.json"))
+
+    def test_normal(self):
+        db = core.SQL()
+        self.assertTrue(db.create_table_from_json("artists.json"))
+
+        ans = [{'ArtistId': 43, 'Name': 'A Cor Do Som'}, {'ArtistId': 1, 'Name': 'AC/DC'},
+               {'ArtistId': 230, 'Name': 'Aaron Copland & London Symphony Orchestra'},
+               {'ArtistId': 202, 'Name': 'Aaron Goldberg'},
+               {'ArtistId': 214, 'Name': 'Academy of St. Martin in the Fields & Sir Neville Marriner'}]
+
+        self.assertEqual(ans, db.select("artists", return_as_dict=True, limit=5, order_by='Name'))
+
+
+class CreateTableFromCsv(unittest.TestCase):
+    def test_normal(self):
+        db = core.SQL()
+        self.assertTrue(db.create_table_from_csv("chinook-artists.csv"))
+        ans = [{'ArtistId': 43, 'Name': 'A Cor Do Som'}, {'ArtistId': 1, 'Name': 'AC/DC'},
+               {'ArtistId': 230, 'Name': 'Aaron Copland & London Symphony Orchestra'},
+               {'ArtistId': 202, 'Name': 'Aaron Goldberg'},
+               {'ArtistId': 214, 'Name': 'Academy of St. Martin in the Fields & Sir Neville Marriner'}]
+
+        self.assertEqual(ans, db.select("chinook_artists", return_as_dict=True, limit=5, order_by='Name'))
+
+
+if __name__ == '__main__':
+    unittest.main()

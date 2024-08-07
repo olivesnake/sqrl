@@ -1,10 +1,12 @@
 import unittest
 import sqrl.utils as utils
 
+
 class TestExtractFilename(unittest.TestCase):
     def test_extract_filename(self):
         self.assertEqual(utils.extract_filename("hello/world.txt"), "world")
         self.assertEqual(utils.extract_filename("world"), "world")
+
 
 class TestDetectType(unittest.TestCase):
     def test_detect_type_csv(self):
@@ -26,6 +28,13 @@ class TestDetectType(unittest.TestCase):
         self.assertEqual(utils.detect_type_json(b"\xDE\xEA\xBE\xEF"), "blob")
         self.assertEqual(utils.detect_type_json(b"hello world"), "blob")
         self.assertEqual(utils.detect_type_json("hello world"), "text")
+
+
+class TestReadCsv(unittest.TestCase):
+    def test_normal(self):
+        headers, rows = utils.read_csv("memory-sqlite_sequence.csv")
+        self.assertEqual(headers, ["name", "seq"])
+        self.assertEqual(rows[0], ["artist", '2'])
 
 
 if __name__ == '__main__':
