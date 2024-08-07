@@ -1,6 +1,7 @@
 """
 Oliver 2024
 """
+import os.path
 
 from . import utils
 import csv as _csv
@@ -541,16 +542,47 @@ class SQL:
                 progress=None if quiet else progress_callback
             )
 
-    def from_csv(self, filename: str, name: str | None = None) -> bool:
-        pass
+    def create_table_from_csv(self, filename: str, name: str | None = None) -> bool:
 
-    def from_json(self, filename: str, name: str | None = None) -> bool:
+        return False
+
+    def create_table_from_json(self, filename: str, name: str | None = None) -> bool:
+        """
+        create a new table in the current database from a json file and inserts all data
+        assumes that json file is an array of objects with the same keys
+        :param filename: name of json file
+        :param name: optional name of table
+        :return: boolean of if creation was successful
+        """
+        if name is None:
+            name = utils.extract_filename(filename).lower()
         with open(filename, "r") as file:
             data = json.load(file)
             if len(data) == 0:
                 return
+            if not isinstance(data, list):
+                # TODO: implement handling for a single object?
+                raise TypeError
 
-            data[0]
+            # assume all objects have the same key
+            item = data[0]
+            keys = item.keys()
+            cols = ",".join(
+                "{} {}".format(
+                    k, utils.detect_type_json(item[k])
+                )
+                for k in keys
+            )
+            statement = f"CREATE TABLE {name} ({cols});"  # don't check if exists for later handling
+            if not self.execute(statement):  # error in creation or table name exists
+                return False
+
+            # insert_stmt = f"-- INSERT INTO {name} ({','.join(keys)}) VALUES ({','.join('?' * len(keys))});"
+            # print(insert_stmt)
+            success = True
+            for x in data:
+                success = success and self.insert(name, x)
+            return success
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.con.close()
