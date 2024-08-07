@@ -2,6 +2,43 @@ import unittest
 import sqrl.core as core
 
 
+class GetTableInfo(unittest.TestCase):
+    def test_get_table_names(self):
+        db = core.SQL("../chinook.db")
+        result = db.get_table_names()
+        result.sort()
+        self.assertEqual(result,
+                         ['albums', 'artists',
+                          'customers',
+                          'employees',
+                          'genres',
+                          'invoice_items',
+                          'invoices',
+                          'media_types',
+                          'playlist_track',
+                          'playlists',
+                          'sqlite_sequence',
+                          'sqlite_stat1',
+                          'tracks']
+                         )
+
+    def test_get_column_names(self):
+        db = core.SQL("../chinook.db")
+        result = db.get_column_names("albums")
+        self.assertIsNotNone(result)
+        self.assertEqual(result, ["AlbumId", "Title", "ArtistId"])
+
+    def test_get_column_names_nonexistent(self):
+        db = core.SQL("../chinook.db")
+        result = db.get_column_names("unreal")
+        self.assertFalse(result)
+
+
+class Select(unittest.TestCase):
+    def test_normal(self):
+        pass
+
+
 class CreateTableFromJSON(unittest.TestCase):
     def test_invalid_json_file(self):
         db = core.SQL()

@@ -561,7 +561,6 @@ class SQL:
             col = "{} {}".format(headers[i].replace(' ', '_'), utils.detect_type_csv(v))
             columns.append(col)
         create_stmt = f"CREATE TABLE {name} ({','.join(columns)});"
-        print(create_stmt)
         if not self.execute(create_stmt):
             return False
 
