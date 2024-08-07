@@ -482,7 +482,7 @@ class SQL:
         if not self.table_exists(table_name):
             return
         outfile = f"./{self.__get_database_name()}-{table_name}.csv"
-        rows = [dict(tab) for tab in self.select(table_name)]
+        rows = [row for row in self.select(table_name, return_as_dict=True)]
         if not len(rows):
             return
         headers = list(rows[0].keys())  # extract column header line
@@ -540,6 +540,17 @@ class SQL:
                 pages=pages,
                 progress=None if quiet else progress_callback
             )
+
+    def from_csv(self, filename: str, name: str | None = None) -> bool:
+        pass
+
+    def from_json(self, filename: str, name: str | None = None) -> bool:
+        with open(filename, "r") as file:
+            data = json.load(file)
+            if len(data) == 0:
+                return
+
+            data[0]
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.con.close()

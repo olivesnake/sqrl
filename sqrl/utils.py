@@ -29,3 +29,7 @@ def process_dict(d: Dict[Any, Any] | None) -> Tuple[List[Any], List[Any]]:
     keys = list(d.keys())
     vals = list(d.values())
     return keys, vals
+
+
+def detect_type(data):
+    return
