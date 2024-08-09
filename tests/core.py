@@ -38,6 +38,16 @@ class Select(unittest.TestCase):
     def test_normal(self):
         pass
 
+    def test_limit_1(self):
+        db = core.SQL("../chinook.db")
+        result = db.fetch("select name from artists limit 1;")
+        self.assertIsInstance(result, str)
+        self.assertEqual(result, "AC/DC")
+        result2 = db.fetch("select name from artists limit 10 offset 10;")
+        self.assertEqual(result2, ['Black Label Society', 'Black Sabbath', 'Body Count', 'Bruce Dickinson', 'Buddy Guy',
+                                   'Caetano Veloso', 'Chico Buarque', 'Chico Science & Nação Zumbi', 'Cidade Negra',
+                                   'Cláudio Zoli'])
+
 
 class CreateTableFromJSON(unittest.TestCase):
     def test_invalid_json_file(self):

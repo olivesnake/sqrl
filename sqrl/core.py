@@ -337,7 +337,7 @@ class SQL:
         """
         try:
             params = list(params)
-            one = one or re.match(r"^.+ LIMIT 1($| |;|\D).*", sql, flags=re.IGNORECASE)
+            one = one or re.match(r"^.+ LIMIT 1(?=(\s|;)).*", sql, flags=re.IGNORECASE)
             self.con.row_factory = sqlite.Row if return_as_dict else None
             # select rows from database
             rows = [
