@@ -431,19 +431,28 @@ class SQL:
         name, _ = _op.splitext(fname)
         return name
 
-    def dump(self, out_file: str = None) -> None:
+    def dump(self, out_file: str = None, schema_only: bool = True) -> None:
         """
         dump the entire database schema to a
         .sql file
         :param out_file: (optional) name of the destination file
+        :param schema_only: (optional) flag to specify whether you want to
+        dump the entire database or just the schema
         :return: None
         """
         if not out_file:
             out_file = "%s.sql" % self.__get_database_name()
-        dst = open(out_file, 'w', encoding="utf-16")
-        lines = '\n'.join(self.con.iterdump())
-        dst.writelines(lines)
-        dst.close()
+        if schema_only:
+            # fetch table defintions
+            defs = self.fetch(
+                "SELECT sql || ';' FROM sqlite_master WHERE type='table' AND sql NOT NULL;"
+            )
+            lines = '\n'.join(defs)
+        else:
+            lines = '\n'.join(self.con.iterdump())
+
+        with open(out_file, 'w', encoding="utf-16") as dst:
+            dst.writelines(lines)
 
     def export_to_csv(self, delimeter: str = ',') -> None:
         """
