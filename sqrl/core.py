@@ -542,6 +542,38 @@ class SQL:
                 progress=None if quiet else progress_callback
             )
 
+    def from_df(self, dataframe, table_name: str, strict: bool = False) -> bool:
+        """
+        create a table in the sqlite database from a pandas dataframe
+        :param dataframe: a pandas dataframe
+        :param table_name: name of the table to be created
+        :param strict: flag for whether to create and fill table only if all rows are
+        successfully inserted, defaults to False
+        :return: boolean of creation and population success
+        """
+        # create table
+        columns = dataframe.columns.to_list()
+        tmp = dataframe.dropna().to_dict(orient='records')
+        col_defs = []
+        for k, v in tmp[0].items():
+            c = f"{k} {utils.detect_type_json(v)}"
+            col_defs.append(c)
+        table_stmt = f"CREATE TABLE {table_name} ({', '.join(col_defs)});"
+        if not self.execute(table_stmt):
+            return False
+        # populate table
+        rows = dataframe.to_dict(orient='records')
+        insert_stmt = f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({','.join('?' * len(columns))});"
+
+        for row in rows:
+            if not self.insert(table_name=table_name, data=row) and strict:
+                # clean up
+                self.execute(f"DELETE FROM {table_name};")
+                self.execute(f"DROP TABLE {table_name};")
+                return False
+
+        return True
+
     def create_table_from_csv(self, filename: str, name: str | None = None) -> bool:
         """
         create a new table in the current database from a csv file and inserts all data
