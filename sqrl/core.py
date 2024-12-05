@@ -8,7 +8,7 @@ import os.path as _op
 import re
 import sqlite3 as sqlite
 from typing import Dict, List, Any, Tuple, Callable
-
+import sqlite_vec
 from . import utils
 
 IN_MEMORY = ":memory:"
@@ -22,7 +22,7 @@ def progress_callback(status, remaining, total):
     print("{}/{} pages copied..".format(total - remaining, total))
 
 
-class SQL:
+class SQRL:
     def __init__(
             self,
             filename: str = IN_MEMORY,
@@ -33,7 +33,9 @@ class SQL:
             check_same_thread: bool = True,
             cached_statements: int = 128,
             optimize: bool = True,
-            foreign_keys: bool = True
+            foreign_keys: bool = True,
+            enable_vectors: bool = True,
+            embedding_fn: Callable = None
     ):
         """
         :param filename: path to database file
@@ -45,6 +47,7 @@ class SQL:
         :param cached_statements:he number of statements that sqlite3 should internally cache for this connection, to avoid parsing overhead. By default, 128 statements.
         :param optimize: set journal mode to write ahead log and other optimizations (on by default)
         :param foreign_keys: enables foreign key flag (on by default)
+        :param enable_vectors: flag for enabling vector capability
         """
         self.file: str = filename
         self.con: sqlite.Connection = sqlite.connect(
@@ -55,6 +58,19 @@ class SQL:
             check_same_thread=check_same_thread,
             cached_statements=cached_statements,
         )
+        sqlite_version = self.fetch("select sqlite_version() LIMIT 1;")
+
+        print(f"sqlite_version={sqlite_version}")
+
+        # load sqlite-vec extension
+        if enable_vectors:
+            self.con.enable_load_extension(True)
+            sqlite_vec.load(self.con)
+            self.con.enable_load_extension(False)
+            vec_version = self.fetch("select vec_version() LIMIT 1;")
+            print(f"vec_version={vec_version}")
+        self._vectors_enabled = True
+        self.embed_function = embedding_fn
         if echo:
             self.con.set_trace_callback(echo_callback)
         if foreign_keys:
@@ -384,6 +400,7 @@ class SQL:
             self.con.commit()
             return out
         except sqlite.Error as e:
+            print(e)
             self.con.rollback()
             return False
 
@@ -644,6 +661,72 @@ class SQL:
             for x in data:
                 success = success and self.insert(name, x)
             return success
+
+    def add_embedding(self, table_name: str, text: str) -> bool:
+        """
+        insert a text into an existing vector table
+        :param table_name: name of vector table
+        :param text: text for the embedding
+        :return: boolean success
+        """
+
+        if not self._vectors_enabled:
+            raise RuntimeError("vectors not enabled.")
+
+        embedding = utils.serialize(self.embed_function(text))
+
+        return self.execute(f"INSERT INTO {table_name}(content, embedding) VALUES (?, ?);", text, embedding)
+
+    def create_embedding_db(self, table_name: str, dim: int) -> bool:
+        """
+        create a new virtual table for working with vectors
+        leveraging sqlite-vec
+        :param table_name: name of vector table to create
+        :param dim: size of float arrays for vectors to be inserted
+        :return: success boolean
+        """
+        if not self._vectors_enabled:
+            raise RuntimeError("vectors not enabled.")
+        return self.execute(
+            f"""
+                   CREATE VIRTUAL TABLE {table_name} USING vec0(
+                       id INTEGER PRIMARY KEY,
+                       content TEXT NOT NULL UNQIUE,
+                       embedding FLOAT[{dim}]
+                   );
+                   """
+        )
+
+    def k_nearest_embeddings(self, table_name: str, query: str, k: int) -> List[
+        Tuple[int, str, float]]:
+        """
+        returns the k nearest embeddings and their respective text content to
+        a provided text embedding vector
+        :param table_name: name of vector table
+        :param query: a string of query to converted to vector embedding
+        :param k: number of results to return
+        :return: list of tuple (id, text content, distance)
+        """
+        if not self._vectors_enabled:
+            raise RuntimeError("vectors not enabled.")
+
+        embedding = utils.serialize(
+            self.embed_function(query)
+        )
+
+        return self.fetch(
+            f"""
+            SELECT
+            id,
+            content,
+            distance
+            FROM {table_name}
+            WHERE 
+            embedding MATCH ? AND k = ?
+            ORDER BY distance
+            """,
+            embedding, k
+        )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.con.close()

@@ -5,6 +5,16 @@ import os.path
 import re
 from typing import List, Dict, Any, Tuple
 import csv
+import struct
+
+
+def serialize(vector: List[float]) -> bytes:
+    """
+    serializes a list of floats into bytes format
+    :param vector: list of floats
+    :return: raw bytes of vector
+    """
+    return struct.pack("%sf" % len(vector), *vector)
 
 
 def AND(*params) -> str:

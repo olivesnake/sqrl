@@ -4,7 +4,7 @@ import sqrl.core as core
 
 class GetTableInfo(unittest.TestCase):
     def test_get_table_names(self):
-        db = core.SQL("../chinook.db")
+        db = core.SQRL("../chinook.db")
         result = db.get_table_names()
         result.sort()
         self.assertEqual(result,
@@ -23,13 +23,13 @@ class GetTableInfo(unittest.TestCase):
                          )
 
     def test_get_column_names(self):
-        db = core.SQL("../chinook.db")
+        db = core.SQRL("../chinook.db")
         result = db.get_column_names("albums")
         self.assertIsNotNone(result)
         self.assertEqual(result, ["AlbumId", "Title", "ArtistId"])
 
     def test_get_column_names_nonexistent(self):
-        db = core.SQL("../chinook.db")
+        db = core.SQRL("../chinook.db")
         result = db.get_column_names("unreal")
         self.assertFalse(result)
 
@@ -39,7 +39,7 @@ class Select(unittest.TestCase):
         pass
 
     def test_limit_1(self):
-        db = core.SQL("../chinook.db")
+        db = core.SQRL("../chinook.db")
         result = db.fetch("select name from artists limit 1;")
         self.assertIsInstance(result, str)
         self.assertEqual(result, "AC/DC")
@@ -51,16 +51,16 @@ class Select(unittest.TestCase):
 
 class CreateTableFromJSON(unittest.TestCase):
     def test_invalid_json_file(self):
-        db = core.SQL()
+        db = core.SQRL()
         self.assertFalse(db.create_table_from_json("bad.json"))
 
     def test_existing_table_name(self):
-        db = core.SQL()
+        db = core.SQRL()
         self.assertTrue(db.execute("CREATE TABLE artists (foo integer, bar text)"))
         self.assertFalse(db.create_table_from_json("artists.json"))
 
     def test_normal(self):
-        db = core.SQL()
+        db = core.SQRL()
         self.assertTrue(db.create_table_from_json("artists.json"))
 
         ans = [{'ArtistId': 43, 'Name': 'A Cor Do Som'}, {'ArtistId': 1, 'Name': 'AC/DC'},
@@ -73,7 +73,7 @@ class CreateTableFromJSON(unittest.TestCase):
 
 class CreateTableFromCsv(unittest.TestCase):
     def test_normal(self):
-        db = core.SQL()
+        db = core.SQRL()
         self.assertTrue(db.create_table_from_csv("chinook-artists.csv"))
         ans = [{'ArtistId': 43, 'Name': 'A Cor Do Som'}, {'ArtistId': 1, 'Name': 'AC/DC'},
                {'ArtistId': 230, 'Name': 'Aaron Copland & London Symphony Orchestra'},
